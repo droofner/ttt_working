@@ -8,31 +8,30 @@ require_relative 'unbeatable_ai.rb'
 require 'aws/s3'
 load './local_env.rb' if File.exists?("./local_env.rb")
   
-s3_key = ENV['S3_Key']
-s3_secret = ENV['S3_Secret']
-
+def write_file_to_s3(player_1,player_2,winner,date_time)
 AWS::S3::Base.establish_connection!(
- :access_key_id => s3_key,
- :secret_access_key => s3_secret
-)
-def write_file_to_s3(data_to_write)
-  AWS::S3::S3Object.store('summary.csv' , 
-      data_to_write, 
-      'tictactoe-game4', 
+ :access_key_id => ENV['S3_Key'] ,
+ :secret_access_key => ENV['S3_Secret']
+ )
+file = 'summary.csv'
+bucket = 'tictactoe-game5'
+csv = AWS::S3::S3Object.value(file, bucket)
+csv<<player_1 + ", " + player_2 + ", " + winner + ", " + date_time.to_s + "\n"
+
+AWS::S3::S3Object.store(File.basename(file), 
+      csv,
+      bucket,
       :access => :public_read)
 end
 
+enable :sessions
+
 def read_csv_from_s3
-file = 'summary.csv'
-bucket = ENV['tictactoe-game4']
+file = ENV['S3_File']
+bucket = ENV['S3_BUCKET']
 object_from_s3 = AWS::S3::S3Object.value(file, bucket)
 csv = CSV.parse(object_from_s3)
 end
-
-# post routes come from the form action
-# params come from form names
-
-enable :sessions
 
 get '/' do
 	@title = "Welcome to Tic Tac Toe"
@@ -60,8 +59,8 @@ post '/opponent' do
 	elsif player_2 == "sequential_ai"
 		session[:p2] = SequentialAI.new("O")
 
-		erb :get_move, :locals => { :board => session[:board].board_positions }
-		# redirect '/get_move'
+		#erb :get_move, :locals => { :board => session[:board].board_positions }
+		 redirect '/get_move'
 
 	elsif player_2 == "random_ai"
 		session[:p2] = RandomAI.new("O")
@@ -75,8 +74,8 @@ post '/opponent' do
 	else player_2 == "unbeatable_ai"
 		session[:p2] = UnbeatableAI.new("O")
 
-		erb :get_move, :locals => { :board => session[:board].board_positions }
-		# redirect '/get_move'
+		#erb :get_move, :locals => { :board => session[:board].board_positions }
+		 redirect '/get_move'
 	end
 end
 
@@ -121,6 +120,7 @@ get '/make_move' do
 		date_time = DateTime.now
 
 		write_to_csv(player_1, player_2, winner, date_time)
+		write_file_to_s3(player_1, player_2, winner, date_time)
 
 		erb :win, :locals => { :current_player => session[:current_player], :current_player_name => session[:current_player_name], :board => session[:board].board_positions }
 	elsif session[:board].game_ends_in_tie? == true
@@ -130,6 +130,7 @@ get '/make_move' do
 		date_time = DateTime.now
 
 		write_to_csv(player_1, player_2, winner, date_time)
+		write_file_to_s3(player_1, player_2, winner, date_time)
 
 		erb :tie, :locals => { :board => session[:board].board_positions }
 	else
@@ -164,10 +165,14 @@ def write_to_csv(player_1, player_2, winner, date_time)
   		csv << ["#{player_1}" + ", " + "#{player_2}" + ", " + "#{winner}" + ", " + "#{date_time}"]
 	end
 end
-
-def check_file_length()
-	File.readlines("summary.csv").size
+get '/update_csv' do 
+	csv = read_csv_from_s3
+	erb :update_csv, :locals =>{:csv =>csv}
 end
+
+#def check_file_length()
+#	File.readlines("summary.csv").size
+#end
 
 # You can do a redirect if you're not using erb 
 # 
