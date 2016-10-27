@@ -5,33 +5,40 @@ require_relative 'human.rb'
 require_relative 'sequential_ai.rb'
 require_relative 'random_ai.rb'
 require_relative 'unbeatable_ai.rb'
-require 'aws/s3'
+require 'aws/s3' 
 load './local_env.rb' if File.exists?("./local_env.rb")
-  
-def write_file_to_s3(player_1,player_2,winner,date_time)
-AWS::S3::Base.establish_connection!(
- :access_key_id => ENV['S3_Key'] ,
- :secret_access_key => ENV['S3_Secret']
- )
-file = 'summary.csv'
-bucket = 'tictactoe-game5'
-csv = AWS::S3::S3Object.value(file, bucket)
-csv<<player_1 + ", " + player_2 + ", " + winner + ", " + date_time.to_s + "\n"
 
-AWS::S3::S3Object.store(File.basename(file), 
-      csv,
-      bucket,
-      :access => :public_read)
+def write_file_to_s3(player_1, player_2, winner, date_time)
+	AWS::S3::Base.establish_connection!(
+  :access_key_id => ENV['S3_KEY'],
+  :secret_access_key => ENV['S3_SECRET']   
+)
+	file = 'summary.csv' 
+	bucket = 'tictactoe-game5'
+	csv = AWS::S3::S3Object.value(file, bucket)
+	csv << player_1 + ", " + player_2 + ", " + winner + ", " + date_time.to_s + "\n"
+	AWS::S3::S3Object.store(File.basename(file), 
+        csv, 
+        bucket, 
+        :access => :public_read)	
+end
+
+# Added method 28
+def read_csv_from_s3
+	file = 'summary.csv'
+	bucket = 'tictactoe-game5'
+	object_from_s3 = AWS::S3::S3Object.value(file, bucket)
+end
+
+def create_result_array(content)
+	file = content
+	result = file.split("\n")
+	array = Array.new
+	result.each { |x| array.push(x.split(","))}
+	array
 end
 
 enable :sessions
-
-def read_csv_from_s3
-file = ENV['S3_File']
-bucket = ENV['S3_BUCKET']
-object_from_s3 = AWS::S3::S3Object.value(file, bucket)
-csv = CSV.parse(object_from_s3)
-end
 
 get '/' do
 	@title = "Welcome to Tic Tac Toe"
@@ -58,32 +65,27 @@ post '/opponent' do
 
 	elsif player_2 == "sequential_ai"
 		session[:p2] = SequentialAI.new("O")
-
-		#erb :get_move, :locals => { :board => session[:board].board_positions }
-		 redirect '/get_move'
-
-	elsif player_2 == "random_ai"
-		session[:p2] = RandomAI.new("O")
-
 		session[:name_player_2] = "CPU"
-
-		# erb :get_move, :locals => { :current_player => session[:current_player], :current_player_name => session[:current_player_name], :board => session[:board].board_positions }
 
 		redirect '/get_move'
 
-	else player_2 == "unbeatable_ai"
-		session[:p2] = UnbeatableAI.new("O")
+	elsif player_2 == "random_ai"
+		session[:p2] = RandomAI.new("O")
+		session[:name_player_2] = "CPU"
 
-		#erb :get_move, :locals => { :board => session[:board].board_positions }
-		 redirect '/get_move'
+		redirect '/get_move'
+
+	# else player_2 == "unbeatable_ai"
+	# 	session[:p2] = UnbeatableAI.new("O")
+
+	# 	redirect '/get_move'
 	end
 end
 
 post '/opponent_name' do
 	session[:name_player_2] = params[:player_2]
 
-	# erb :get_move, :locals => { :current_player => session[:current_player], :current_player_name => session[:current_player_name], :board => session[:board].board_positions }
-		redirect '/get_move'
+	redirect '/get_move'
 end
 
 get '/get_move' do
@@ -94,6 +96,7 @@ get '/get_move' do
 	elsif session[:board].valid_space?(move)
 		redirect '/make_move?move=' + move.to_s 
 	else
+		# Does line 101 ever happen?
 		redirect '/get_move'
 	end
 end
@@ -119,7 +122,9 @@ get '/make_move' do
 		winner = session[:current_player_name]
 		date_time = DateTime.now
 
-		write_to_csv(player_1, player_2, winner, date_time)
+		# write_to_csv(player_1, player_2, winner, date_time)
+
+		# Added line 134
 		write_file_to_s3(player_1, player_2, winner, date_time)
 
 		erb :win, :locals => { :current_player => session[:current_player], :current_player_name => session[:current_player_name], :board => session[:board].board_positions }
@@ -129,8 +134,7 @@ get '/make_move' do
 		winner = "Tie"
 		date_time = DateTime.now
 
-		write_to_csv(player_1, player_2, winner, date_time)
-		write_file_to_s3(player_1, player_2, winner, date_time)
+		# write_to_csv(player_1, player_2, winner, date_time)
 
 		erb :tie, :locals => { :board => session[:board].board_positions }
 	else
@@ -142,16 +146,20 @@ get '/make_move' do
 			session[:current_player_name] = session[:name_player_1]
 		end
 
-		# erb :get_move, :locals => { :current_player => session[:current_player], :current_player_name => session[:current_player_name], :board => session[:board].board_positions }
-
 		redirect '/get_move'
 	end	
 end
 
 get '/upload' do
-  winning_results = 'summary.csv'
-  write_file_to_s3(winning_results)
-  #erb :scores, locals => {:winning_results => winning_results}
+  	winning_results = 'summary.csv'
+  	write_file_to_s3(winning_results)
+end
+
+get '/update_csv' do
+	names = create_result_array(read_csv_from_s3)
+	names.shift
+	
+	erb :update_csv, :layout => :results_layout, :locals => { :names => names, :board => session[:board].board_positions }
 end
 
 get '/win' do 
@@ -165,14 +173,7 @@ def write_to_csv(player_1, player_2, winner, date_time)
   		csv << ["#{player_1}" + ", " + "#{player_2}" + ", " + "#{winner}" + ", " + "#{date_time}"]
 	end
 end
-get '/update_csv' do 
-	csv = read_csv_from_s3
-	erb :update_csv, :locals =>{:csv =>csv}
+
+def check_file_length()
+	File.readlines("summary.csv").size
 end
-
-#def check_file_length()
-#	File.readlines("summary.csv").size
-#end
-
-# You can do a redirect if you're not using erb 
-# 
