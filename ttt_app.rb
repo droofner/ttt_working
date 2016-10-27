@@ -37,7 +37,15 @@ def create_result_array(content)
 	result.each { |x| array.push(x.split(","))}
 	array
 end
+def write_to_csv(player_1, player_2, winner, date_time) 
+	CSV.open("summary.csv", "a") do |csv|
+  		csv << ["#{player_1}" + ", " + "#{player_2}" + ", " + "#{winner}" + ", " + "#{date_time}"]
+	end
+end
 
+def check_file_length()
+	File.readlines("summary.csv").size
+end
 enable :sessions
 
 get '/' do
@@ -168,12 +176,21 @@ end
 get '/tie' do
 end
 
-def write_to_csv(player_1, player_2, winner, date_time) 
-	CSV.open("summary.csv", "a") do |csv|
-  		csv << ["#{player_1}" + ", " + "#{player_2}" + ", " + "#{winner}" + ", " + "#{date_time}"]
+post '/search' do
+	search_name = params[:search]
+	results = create_result_array(read_csv_from_s3)
+	plays = 0
+	wins = 0
+	results.each do |result| 
+		if result[0] == search_name || result[1] == search_name
+			plays += 1
+		end
+		if result[2] == search_name
+			wins += 1
+		end
 	end
+	"plays = #{plays} and wins = #{wins} #{results}"
 end
 
-def check_file_length()
-	File.readlines("summary.csv").size
-end
+
+#result ["jen", "dawn", "dawn", "date"]
